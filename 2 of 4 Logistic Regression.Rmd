@@ -1,0 +1,202 @@
+---
+title: "Logistic Regression Model"
+author: "Sophia Bessias"
+date: "January 31, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+###Description
+Script 2/4. Uses training, test, and validations sets created by 'Data Cleaning and Prep' script. After exploring logistic regression models for this exercise, I chose to go with a decision tree instead. Although the AUC numbers were high (0.89 range), I ran into difficulties with the linearity assumption and separation. Accounting for the assumption violation by including transformed variables would have reduced interpretability of the model.
+
+###Load packages
+```{r, results='hide', message=F, warning=F}
+
+require(rpart)
+require(tidyverse)
+require(caTools)
+require(caret)
+require(DescTools)
+require(MASS)
+require(Epi)
+```
+
+###Set path
+```{r}
+path <- 'C:/Users/sbessias/Google Drive/NCSU/Applications/RTI/Project/'
+```
+
+###Load data
+```{r, results='hide', message=F, warning=F}
+m <- read_csv(file=paste(path, 'all.csv', sep='')) #master dataset
+train <- read_csv(file=paste(path, 'train.csv', sep='')) #training
+test <- read_csv(file=paste(path, 'test.csv', sep='')) #test
+val <- read_csv(file=paste(path, 'val.csv', sep='')) #validation
+```
+
+###Logistic Regression Model Building (training set)
+```{r}
+
+##################################
+##########  FULL MODEL ###########
+##################################
+
+#Uses all available variables (clean versions)
+#2574 observations deleted due to missingness = 7.5%
+#C-statistic: 0.901
+#possible problem with perfect separation -- predicted probabilities = 1
+#solution: use capital_gain_clean instead of capital_gain
+
+#build model
+fullmodel <- glm(over_50k ~ age
+              + capital_gain
+              + capital_loss 
+              + hours_week 
+              + workclass_clean
+              + highest_edu_clean
+              + marital_status_clean
+              + occupation_clean
+              + race
+              + sex
+              + world_region,
+              data=train, family=binomial)
+
+#view output
+#summary(fullmodel)
+#exp(coef(fullmodel))
+
+#'Warning: glm.fit: fitted probabilities numerically 0 or 1 occurred' 
+# perfect separation on capital_gain: 
+capgain <- glm(over_50k ~ capital_gain, data=train, family=binomial)
+
+#check variable distribution -- see perfect separation above 50k
+max(m$capital_gain) 
+maxcap <- subset(m, m$capital_gain > 50000)
+
+#solution: exclude capital_gain from model
+
+######################################
+##########  caploss model  ###########
+######################################
+
+#Uses all available variables (clean versions) except capital_gain, which seems to cause perfect separation.
+#2574 observations deleted due to missingness = 7.5%
+#C-statistic: 0.88
+
+#build model
+caploss <- glm(over_50k ~ age
+              + capital_loss 
+              + hours_week 
+              + workclass_clean
+              + highest_edu_clean
+              + marital_status_clean
+              + occupation_clean
+              + race
+              + sex
+              + world_region,
+              data=train, family=binomial)
+
+#view output
+#summary(caploss)
+#exp(coef(caploss))
+
+#ROC curve
+ROC(form=formula(caploss), plot='ROC', data=train, MI=F)
+
+```
+
+###Create Candidate Models
+```{r}
+#stepwise selection
+step_select_both <- stepAIC(caploss, direction = "both")
+step_select_back <- stepAIC(caploss, direction = "backward")
+step_select_fwd <- stepAIC(caploss, direction = "forward")
+
+#winner is caploss model (no deletions),
+#but could remove race, sex, and world region without losing much information:
+
+######### basic model #########
+#Caploss model minus race, sex, and world_region
+#2001 observations deleted due to missingness = 5.9%
+#C-statistic: 0.87
+
+basic <- glm(over_50k ~ age
+              + capital_loss 
+              + hours_week 
+              + workclass_clean
+              + highest_edu_clean
+              + marital_status_clean,
+              data=train, family=binomial)
+
+#summary(basic)
+ROC(form=formula(basic), plot='ROC', data=train, MI=F)
+
+```
+
+###Test two candidate models, caploss and basic
+View confusion matrices and check accuracy. On test data, the two models perform similarly. Basic is more parsimonious and omits fewer observations. 
+```{r}
+
+##########  caploss test ###########
+
+#generate ROC curve and confusion matrix
+ROC(form=formula(caploss), plot='ROC', data=test, MI=F) #optimum cutoff = 0.237; auc=0.89
+predictTestCaploss <- predict(caploss, newdata=test, type='response')
+table(test$over_50k, predictTestCaploss > 0.237) 
+(3866 + 1438)/(3866 + 1438 + 255 + 1228) #78.1% concordance 
+
+
+######### basic test #########
+
+#generate ROC curve and confusion matrix
+ROC(form=formula(basic), plot='ROC', data=test, MI=F) #optimum cutoff = 0.218; auc=0.88
+predictTestBasic <- predict(basic, newdata=test, type='response')
+table(test$over_50k, predictTestBasic > 0.218)
+(3732+1509)/(3732+1509+213+1454) #75.9% concordance
+
+```
+
+###Logistic Regression - Final Model Validation and Assumption Check
+```{r}
+
+######### check linearity assumption - box-tidwell transformations ##########
+#create log transformations of continuous variables
+val$logAge <- val$age*log(val$age)
+val$logCapital_loss <- val$capital_loss*log(val$capital_loss)
+val$logHours_week <- val$hours_week*log(val$hours_week)
+
+#add log-transformed continuous variables to basic model
+checkbasic <- glm(over_50k ~ age
+              + capital_loss 
+              + hours_week 
+              + workclass_clean
+              + highest_edu_clean
+              + marital_status_clean
+              + logAge
+              + logCapital_loss
+              + logHours_week,
+              data=val, family=binomial)
+
+#check p-values for log-transformed variables
+#summary(checkbasic) #potential problem with linearity assumption and age variable, but adding a transformed variable would present a challenge for interpretability. decision tree may be preferable.
+
+######### basic validation #########
+
+#generate roc curve and confusion matrix
+ROC(form=formula(basic), plot='ROC', data=val, MI=F) #optimum cutoff = 0.25; auc=0.89
+predictValBasic <- predict(basic, newdata=val, type='response')
+table(val$over_50k, predictValBasic > 0.25)
+(3997+1430)/(3997+1430+244+1220) #78.8% concordance
+
+#Final Model Assessment Stats
+#AUC = 0.89
+#concordance = 78.8%
+#sensitivity = 84.5% 
+#specifcity = 77.8% 
+
+```
+
+

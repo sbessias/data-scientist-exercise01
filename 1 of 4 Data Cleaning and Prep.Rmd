@@ -1,0 +1,189 @@
+---
+title: "Data Exploration and Cleaning"
+author: "Sophia Bessias"
+date: "January 31, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+###Description
+Script 1/4. This script cleans the dataset and splits it into training, test, and validation. 
+
+####Load packages
+```{r}
+require(tidyverse)
+require(caTools)
+require(caret)
+```
+
+###Set path, filename
+```{r}
+path <- 'C:/Users/sbessias/Google Drive/NCSU/Applications/RTI/Project/'
+filename <- 'master.csv'
+```
+
+###Load data
+```{r, echo=F}
+m <- read_csv(file=paste(path, filename, sep=''), na=c("", "?", "NA"))
+read_csv
+```
+
+###Check for missing values
+3 variables have >1% missing values: workclass, occupation, country. No variable has >6% missing values.
+```{r}
+vars <- colnames(m)
+n = length(vars)
+missing_prop = tibble(var_name = vars, p_miss = rep(0,n))
+
+for (i in 1:n){
+  missing_prop[i,2] = (sum(is.na(m[,i]))/nrow(m))
+}
+
+#see variables missing >1%
+missing_prop[missing_prop$p_miss > 0.01 , ]
+```
+
+###Explore continuous variables
+Check distributions, missing values
+```{r}
+#check for duplicate id values
+#number of unique id's is the same as the number of rows in m:
+length(unique(m$id))
+dim(m)
+
+#see summary of each continous variable
+lapply(m[2:5], summary)
+
+#histogram of capital gain where capital_gain > 0
+hist(m$capital_gain[m$capital_gain > 0])
+
+#histogram of capital gain  where capital_loss > 0
+hist(m$capital_loss[m$capital_loss > 0])
+
+```
+
+###Explore factor variables
+```{r}
+#view tables for factor variables only (columns 6:14)
+lapply(m[6:14], table)
+
+```
+
+### Data Cleaning
+```{r}
+#problem: low frequencies observed for workclass: never-worked (10), without-pay (21)
+#solution: treat as missing
+m$workclass_clean <- ifelse(m$workclass %in% c('Never-worked', 'Without-pay'), NA, m$workclass)
+
+#problem: low frequencies observed for marital_status: Married-AF-Spouse (37)
+#solution: treat as missing
+m$marital_status_clean <- ifelse(m$marital_status == 'Married-AF-spouse', NA, m$marital_status)
+
+#problem: low frequencies observed for occupation: Armed-forces(15)
+#solution: treat as missing
+m$occupation_clean <- ifelse(m$occuption == 'Armed-Forces', NA, m$occuption)
+
+#problem: too many levels for highest_edu
+#solution: combine into standard ranges
+m$highest_edu_clean <- recode(m$highest_edu, 
+                 'Preschool' = 'Elementary-or-Pre',
+                 '1st-4th' = 'Elementary-or-Pre',
+                 '5th-6th' = 'Middle-school',
+                 '7th-8th' = 'Middle-school',
+                 '9th' = 'Some-HS',
+                 '10th' = 'Some-HS',
+                 '11th' = 'Some-HS',
+                 '12th' = 'Some-HS',
+                 'Assoc-acdm' = 'Assoc',
+                 'Assoc-voc' = 'Assoc',
+                 'Masters' = 'Graduate-school',
+                 'Doctorate' = 'Graduate-school'
+                 )
+
+#problem: too many levels for country
+#solution: combine into UN categories
+#https://en.wikipedia.org/wiki/United_Nations_Regional_Groups
+
+m$world_region <- recode(m$country,
+                          'Cambodia' = 'Asia-Pacific',
+                          'Canada' = 'Western-European-and-Others',
+                          'China' = 'Asia-Pacific',
+                          'Columbia' = 'Latin-American-and-Caribbean',
+                          'Cuba' = 'Latin-American-and-Caribbean',
+                          'Dominican-Republic' = 'Latin-American-and-Caribbean',
+                          'Ecuador' = 'Latin-American-and-Caribbean',
+                          'El-Salvador' = 'Latin-American-and-Caribbean',
+                          'England' = 'Western-European-and-Others',
+                          'France' = 'Western-European-and-Others',
+                          'Germany' = 'Western-European-and-Others',
+                          'Greece' = 'Western-European-and-Others',
+                          'Guatemala' = 'Latin-American-and-Caribbean',
+                          'Haiti' = 'Latin-American-and-Caribbean',
+                          'Holand-Netherlands' = 'Western-European-and-Others',
+                          'Honduras' = 'Latin-American-and-Caribbean',
+                          'Hong' = 'Asia-Pacific',
+                          'Hungary' = 'Eastern-Europe',
+                          'India' = 'Asia-Pacific',
+                          'Iran' = 'Asia-Pacific',
+                          'Ireland' = 'Western-European-and-Others',
+                          'Italy' = 'Western-European-and-Others',
+                          'Jamaica' = 'Latin-American-and-Caribbean',
+                          'Japan' = 'Asia-Pacific',
+                          'Laos' = 'Asia-Pacific',
+                          'Mexico' = 'Latin-American-and-Caribbean',
+                          'Nicaragua' = 'Latin-American-and-Caribbean',
+                          'Outlying-US(Guam-USVI-etc)' = 'US-territories',
+                          'Peru' = 'Latin-American-and-Caribbean',
+                          'Philippines' = 'Asia-Pacific',
+                          'Poland' = 'Eastern-Europe',
+                          'Portugal' = 'Western-European-and-Others',
+                          'Puerto-Rico' = 'US-territories',
+                          'Scotland' = 'Western-European-and-Others',
+                          'South' = 'Asia-Pacific',
+                          'Taiwan' = 'Asia-Pacific',
+                          'Thailand' ='Asia-Pacific' ,
+                          'Trinadad&Tobago' = 'Latin-American-and-Caribbean',
+                          'Vietnam' = 'Asia-Pacific',
+                          'Yugoslavia' = 'Eastern-Europe')
+
+```
+
+###Split into training, test, and validation sets
+```{r}
+#set seed for reproducibility
+set.seed(919)
+
+#create index
+idx <- sample(seq(1, 3), size = nrow(m), replace = T, prob = c(.7, .15, .15))
+
+#split
+train <- m[idx == 1,]
+test <- m[idx == 2,]
+val <- m[idx == 3,]
+
+#save files
+write_csv(m, path=paste(path, 'all.csv', sep=''))
+write_csv(train, path=paste(path, 'train.csv', sep=''))
+write_csv(test, path=paste(path, 'test.csv', sep=''))
+write_csv(val, path=paste(path, 'val.csv', sep=''))
+```
+
+###Explore two-way associations using training data
+All factor vars appear significantly associated with the target variable at alpha = 0.05
+```{r}
+factor_set =train[, c(6, 12:13, 15:19)]
+vars = colnames(factor_set)
+n = length(vars)
+chisq_p = tibble(var_name = vars, p_val = rep(0,n))
+
+for (i in 1:n){
+  chitest = chisq.test(factor_set[,i], factor_set$over_50k)
+  chisq_p[i,2] = chitest$p.value
+}
+
+chisq_p
+
+```

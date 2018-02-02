@@ -1,0 +1,154 @@
+---
+title: "Decision Tree"
+author: "Sophia Bessias"
+date: "January 31, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+###Description
+Script 3/4. Uses training, test, and validations sets created by 'Data Cleaning and Prep' script. I ultimately selected a decision tree model for ease of interpretation. Avoids difficulties with linearity asssumption and perfect separation in logistic regression.
+
+###Load packages
+```{r, echo=F, results='hide', message=F, warning=F}
+require(rpart)
+require(partykit)
+require(tidyverse)
+require(caTools)
+require(caret)
+require(DescTools)
+require(RColorBrewer)
+require(rattle)
+```
+
+###Set path
+```{r}
+path <- 'C:/Users/sbessias/Google Drive/NCSU/Applications/RTI/Project/'
+```
+
+###Load data
+```{r, results='hide', message=F, warning=F}
+m <- read_csv(file=paste(path, 'all.csv', sep='')) #master dataset
+train <- read_csv(file=paste(path, 'train.csv', sep='')) #training
+test <- read_csv(file=paste(path, 'test.csv', sep='')) #test
+val <- read_csv(file=paste(path, 'val.csv', sep='')) #validation
+```
+
+###Build Decision Tree Candidate Models (training data)
+```{r}
+
+#Generate full model
+tree <- rpart(over_50k ~ age
+              + capital_gain
+              + capital_loss 
+              + hours_week 
+              + workclass_clean
+              + highest_edu_clean
+              + marital_status_clean
+              + occupation_clean
+              + race
+              + sex
+              + world_region,
+              data=train, method='class',
+              control=rpart.control(minsplit = 200, minbucket = 50, cp=0.001))
+plot(tree)
+
+#Determine optimal pruning based on complexity parameter (cp) and cross-validated error (xerror)
+printcp(tree)
+#Tree with lowest xerror has 25 splits. 
+#visulize relationship between error, cp, and number of splits
+plotcp(tree)
+#11 splits still has low error and would be simpler to use and explain
+
+#Prune tree - minimize xerror
+big_tree <- prune(tree, cp= tree$cptable[which.min(tree$cptable[,"xerror"]),"CP"])
+fancyRpartPlot(big_tree, uniform=TRUE, main="Pruned Classification Tree")
+
+#Prune tree - balance xerror and complexity
+small_tree <- prune(tree, cp=0.00398)
+fancyRpartPlot(small_tree, uniform=TRUE, main="Pruned Classification Tree")
+
+```
+
+#Select Final Model using test set
+```{r}
+#obtain predictions for each candidate
+predictTestSmallTree <- as.data.frame(predict(small_tree, newdata=test, type='class'))
+predictTestBigTree <- as.data.frame(predict(big_tree, newdata=test, type='class'))
+
+#generate confusion matrices for each candidate
+
+###################################
+##########  small tree   ##########
+###################################
+
+predictTestSmallTree$actual <- test$over_50k  # add acutal values of over_50k 
+colnames(predictTestSmallTree) <- c('predicted', 'actual')
+predictTestSmallTree$compare <-  predictTestSmallTree$predicted == predictTestSmallTree$actual  #match?
+table(predictTestSmallTree$predicted, predictTestSmallTree$actual) #confusion matrix
+
+#calculate concordance:84.8%
+(5380+841)/(5380+841+187+927)
+
+#calculate sensitvity: 47.6%
+#true positives/ true positives + false negatives
+841/(841+927)
+
+#calculate specificity: 96.7%
+#true negatives/ true negatives + false positives
+5380/(5380+187)
+
+###################################
+##########   big tree    ##########
+###################################
+
+predictTestBigTree$actual <- test$over_50k  # add acutal values of over_50k
+colnames(predictTestBigTree) <- c('predicted', 'actual')
+predictTestBigTree$compare <-  predictTestBigTree$predicted == predictTestBigTree$actual  #match?
+table(predictTestBigTree$predicted, predictTestBigTree$actual) #confusion matrix
+
+#calculate concordance:85.6%
+(5270+1009)/(5270+1009+297+759)
+
+#calculate sensitvity: 57.1%
+#true positives/ true positives + false negatives
+1009/(1009+759)
+
+#calculate specificity: 94.7%
+#true negatives/ true negatives + false positives
+5270/(5270+297)
+
+```
+
+###Validate Selected Tree
+Both trees are fairly accurate, but are much more specific than they are sensitive. The small tree model is more user-friendly and potentially less overfitted (although it did fine on test data). Final selection: small tree
+```{r}
+
+#obtain predictions for small tree on validation data
+predictValSmallTree <- as.data.frame(predict(small_tree, newdata=val, type='class'))
+
+#create confusion matrix
+predictValSmallTree$actual <- val$over_50k  # add acutal values of over_50k 
+colnames(predictValSmallTree) <- c('predicted', 'actual')
+predictValSmallTree$compare <-  predictValSmallTree$predicted == predictValSmallTree$actual  #match?
+table(predictValSmallTree$predicted, predictValSmallTree$actual) #confusion matrix
+
+#calculate concordance:85.8%
+(5428 + 870)/(5428 + 870 + 186 + 841)
+
+#calculate sensitvity: 50.8%
+#true positives/ true positives + false negatives
+870/(870+841)
+
+#calculate specificity: 96.7%
+#true negatives/ true negatives + false positives
+5428/(5428+186)
+
+#examine variable importance
+small_tree$variable.importance
+#highest variable importance: marital status
+```

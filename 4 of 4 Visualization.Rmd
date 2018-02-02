@@ -1,0 +1,67 @@
+---
+title: "Visualization"
+author: "Sophia Bessias"
+date: "February 1, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+###Description
+Script 4/4. Uses master dataset created by 'Data Cleaning and Prep' script.
+
+###Load packages
+```{r, echo=F, results='hide', message=F, warning=F}
+require(tidyverse)
+require(RColorBrewer)
+```
+
+###Set path
+```{r}
+path <- 'C:/Users/sbessias/Google Drive/NCSU/Applications/RTI/Project/'
+```
+
+###Load data
+```{r, results='hide', message=F, warning=F}
+m <- read_csv(file=paste(path, 'all.csv', sep='')) #master dataset
+```
+
+###Create a barplot of marital status by over_50k
+Demonstrate the importance of the marital status variable in both models
+```{r}
+
+#################### Exploration ######################
+
+#Create subset of dataset with just two columns: marital status and over_50k
+vis<- m[,c(16,6)] 
+table(vis$marital_status_clean)
+vis$over_50k <- ifelse(vis$over_50k == 0, 'No', 'Yes')
+vis$marital_status_clean <- recode(vis$marital_status_clean,
+                                   'Married-civ-spouse' = 'Civ Spouse',
+                                   'Married-spouse-absent' = 'Spouse Absent',
+                                   'Never-married' = 'Never Married')
+
+colnames(vis) <- c('Marital Status', 'Over 50k')
+vis <- subset(vis, is.na(vis$`Marital Status`)==F) #remove NA's
+
+ggplot(vis, aes(`Over 50k` , fill = `Marital Status` ) ) +
+  geom_bar(position='dodge') +
+  scale_fill_brewer(type = 'qual', palette = 'Set2') 
+  
+
+#################### Final Vis #########################
+
+vis2 <- as.data.frame(table(vis))
+colnames(vis2) <- c('Marital Status', 'Income > 50K', 'Count')
+
+ggplot(vis2, aes(x=reorder(`Marital Status`, -Count), y=Count, fill=`Income > 50K`)) +
+    geom_bar(stat='identity', position='dodge') + 
+      scale_fill_brewer(type = 'qual', palette = 'Set3') +
+      xlab('\nMarital Status') +
+      ggtitle('Income by Marital Status -- 1996 US Census\n') +
+      theme_classic() 
+  
+```
+

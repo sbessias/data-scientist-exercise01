@@ -1,0 +1,24 @@
+/*Create Master Table*/
+
+CREATE TABLE master AS
+SELECT 
+/*First, select variables from main records table that do not require lookups*/
+r.id,
+r.age,
+r.capital_gain,
+r.capital_loss,
+r.hours_week,
+r.over_50k,
+
+/*Now replace coded values (stored in variables ending in _id) with actual values 
+from each corresponding lookup table*/
+(SELECT work.name FROM workclasses AS work WHERE work.id = r.workclass_id) AS workclass,
+(SELECT edu.name FROM education_levels AS edu WHERE edu.id = r.education_level_id) AS edu_level,
+(SELECT edu.name FROM education_levels AS edu WHERE edu.id = r.education_num) AS current_edu,
+(SELECT marital.name FROM marital_statuses AS marital WHERE marital.id = r.marital_status_id) AS marital_status,
+(SELECT occ.name FROM occupations AS occ WHERE occ.id = r.occupation_id) AS occuption,
+(SELECT races.name FROM races WHERE races.id = r.race_id) AS race,
+(SELECT sexes.name FROM sexes WHERE sexes.id = r.sex_id) AS sex,
+(SELECT countries.name FROM countries WHERE countries.id = r.country_id) AS country
+
+FROM records as r;
